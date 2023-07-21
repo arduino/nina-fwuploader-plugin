@@ -1,0 +1,36 @@
+profiles:
+  mkrwifi1010:
+    fqbn: arduino:samd:mkrwifi1010
+    platforms:
+      - platform: arduino:samd (1.8.13)
+    libraries:
+      - WiFiNINA (1.8.14)
+
+  nano_33_iot:
+    fqbn: arduino:samd:nano_33_iot
+    platforms:
+      - platform: arduino:samd (1.8.13)
+    libraries:
+      - WiFiNINA (1.8.14)
+
+  mkrvidor4000:
+    fqbn: arduino:samd:mkrvidor4000
+    platforms:
+      - platform: arduino:samd (1.8.13)
+    libraries:
+      - WiFiNINA (1.8.14)
+      - VidorPeripherals (1.1.0)
+
+  uno2018:
+    fqbn: arduino:megaavr:uno2018
+    platforms:
+      - platform: arduino:megaavr (1.8.8)
+    libraries:
+      - WiFiNINA (1.8.14)
+
+  nanorp2040connect:
+    fqbn: arduino:mbed_nano:nanorp2040connect
+    platforms:
+      - platform: arduino:mbed_nano (4.0.4)
+    libraries:
+      - WiFiNINA (1.8.14)

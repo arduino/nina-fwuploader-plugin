@@ -16,7 +16,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // To generate the binaries run:
-// arduino-cli compile -e --profile [TODO]
+// arduino-cli compile -e --profile <profile_name>
 
 #include <SPI.h>
 #include <WiFiNINA.h>
