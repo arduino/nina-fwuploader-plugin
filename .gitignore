@@ -15,7 +15,30 @@
 *.out
 
 # Dependency directories (remove the comment below to include it)
-# vendor/
+vendor/
 
 # Go workspace file
 go.work
+go.work.sum
+
+/debug
+/arduino-cli*
+/main
+/.vscode/
+/cmd/formatter/debug.test
+/arduino-cli.yaml
+/wiki
+.idea
+coverage_*.txt
+coverage_data
+__pycache__
+venv
+/dist
+/node_modules/
+
+# Misc.
+.DS_Store
+
+# Delve debugger binary file
+__debug_bin
+
