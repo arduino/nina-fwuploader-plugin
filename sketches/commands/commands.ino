@@ -120,20 +120,13 @@ void restartPassthrough(){
 }
 
 void version(){
-//   Print a welcome message
-  Serial.println("WiFiNINA firmware check.");
-  Serial.println();
-
-  // check for the WiFi module:
   if (WiFi.status() == WL_NO_MODULE) {
-    Serial.println("Communication with WiFi module failed!");
-    // don't continue
-    while (true);
+    Serial.println("99.99.99");
+    return;
   }
 
   // Print firmware version on the module
   String fv = WiFi.firmwareVersion();
-  Serial.print("Firmware version installed: ");
   Serial.println(fv);
 }
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"embed"
 	"fmt"
 	"os"
@@ -55,7 +56,28 @@ var _ helper.Plugin = (*ninaPlugin)(nil)
 
 // GetFirmwareVersion implements helper.Plugin.
 func (p *ninaPlugin) GetFirmwareVersion(portAddress string, fqbn string, feedback *helper.PluginFeedback) (*semver.RelaxedVersion, error) {
-	panic("unimplemented")
+	if err := p.uploadCommandsSketch(portAddress, fqbn, feedback); err != nil {
+		return nil, err
+	}
+    // TODO should we check for possible port change, that might occur after the sketch upload?
+	port, err := serial.Open(portAddress)
+	if err != nil {
+		return nil, err
+	}
+	defer port.Close()
+
+	if _, err := port.Write([]byte("v")); err != nil {
+		return nil, fmt.Errorf("write to serial port: %v", err)
+	}
+
+	var version string
+	scanner := bufio.NewScanner(port)
+	for scanner.Scan() {
+		version = scanner.Text()
+		break
+	}
+
+	return semver.ParseRelaxed(version), nil
 }
 
 // GetPluginInfo implements helper.Plugin.
@@ -150,7 +172,7 @@ func (p *ninaPlugin) uploadCommandsSketch(portAddress, fqbn string, feedback *he
 		return err
 	}
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(3 * time.Second)
 	return nil
 }
 
