@@ -10,6 +10,11 @@ reviewed:
     - golang.org/x/exp/slog
     - golang.org/x/exp/slog/internal
     - golang.org/x/exp/slog/internal/buffer
+    - golang.org/x/sys/unix
+    - golang.org/x/text/internal/language
+    - golang.org/x/text/internal/language/compact
+    - golang.org/x/text/internal/tag
+    - golang.org/x/text/language
 
 # Source: https://github.com/arduino/tooling-project-assets/blob/main/workflow-templates/assets/check-dependencies/AGPL-3.0/.licensed.yml
 allowed:
