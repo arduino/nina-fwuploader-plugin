@@ -49,3 +49,6 @@ __debug_bin
 /sketches/commands/build/**/*.uf2
 /sketches/commands/build/**/*.eep
 /sketches/commands/build/**/*bootloader.bin
+
+# compiled binary in root folder
+nina-fwuploader-plugin
