@@ -59,7 +59,7 @@ func (p *ninaPlugin) GetFirmwareVersion(portAddress string, fqbn string, feedbac
 	if err := p.uploadCommandsSketch(portAddress, fqbn, feedback); err != nil {
 		return nil, err
 	}
-    // TODO should we check for possible port change, that might occur after the sketch upload?
+	// TODO should we check for possible port change, that might occur after the sketch upload?
 	port, err := serial.Open(portAddress)
 	if err != nil {
 		return nil, err
