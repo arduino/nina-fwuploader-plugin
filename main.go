@@ -90,7 +90,56 @@ func (p *ninaPlugin) GetPluginInfo() *helper.PluginInfo {
 
 // UploadCertificate implements helper.Plugin.
 func (p *ninaPlugin) UploadCertificate(portAddress string, fqbn string, certificatePath *paths.Path, feedback *helper.PluginFeedback) error {
-	panic("unimplemented")
+	if portAddress == "" {
+		return fmt.Errorf("invalid port address")
+	}
+	if certificatePath == nil || certificatePath.IsDir() || !certificatePath.Exist() {
+		return fmt.Errorf("invalid certificate path")
+	}
+	fmt.Fprintf(feedback.Out(), "Uploading certificates to %s...\n", portAddress)
+
+	if err := p.uploadCommandsSketch(portAddress, fqbn, feedback); err != nil {
+		return err
+	}
+
+	if err := p.reboot(&portAddress, feedback); err != nil {
+		return err
+	}
+
+	certificatesData, err := certificatePath.ReadFile()
+	if err != nil {
+		return err
+	}
+
+	// The certificate must be multiple of 4, otherwise `espflash` won't work!
+	// (https://github.com/esp-rs/espflash/issues/440)
+	for len(certificatesData)&3 != 0 {
+		certificatesData = append(certificatesData, 0)
+	}
+
+	certificatesDataLimit := 0x20000
+	if len(certificatesData) > certificatesDataLimit {
+		return fmt.Errorf("certificates data %d exceeds limit of %d bytes", len(certificatesData), certificatesDataLimit)
+	}
+
+	certData, err := paths.WriteToTempFile(certificatesData, paths.TempDir(), "nina-fwuploader-plugin-cert")
+	if err != nil {
+		return err
+	}
+	defer certData.Remove()
+
+	cmd, err := executils.NewProcess([]string{}, p.espflashBin.String(), "write-bin", "-p", portAddress, "-b", "1000000", "0x10000", certData.String())
+	if err != nil {
+		return err
+	}
+	cmd.RedirectStderrTo(feedback.Err())
+	cmd.RedirectStdoutTo(feedback.Out())
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+
+	fmt.Fprintf(feedback.Out(), "\nUpload completed! To complete the update process please disconnect and then reconnect the board.\n")
+	return nil
 }
 
 // UploadFirmware implements helper.Plugin.
