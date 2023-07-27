@@ -3,7 +3,7 @@ name: Release
 
 env:
   # As defined by the Taskfile's PROJECT_NAME variable
-  PROJECT_NAME: uno-r4-wifi-fwuploader-plugin
+  PROJECT_NAME: nina-fwuploader-plugin
   # As defined by the Taskfile's DIST_DIR variable
   DIST_DIR: dist
   # The project's folder on Arduino's download server for uploading builds
