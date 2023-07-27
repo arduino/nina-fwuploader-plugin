@@ -56,7 +56,7 @@ var _ helper.Plugin = (*ninaPlugin)(nil)
 
 // GetFirmwareVersion implements helper.Plugin.
 func (p *ninaPlugin) GetFirmwareVersion(portAddress string, fqbn string, feedback *helper.PluginFeedback) (*semver.RelaxedVersion, error) {
-	if err := p.uploadCommandsSketch(portAddress, fqbn, feedback); err != nil {
+	if err := p.uploadCommandsSketch(&portAddress, fqbn, feedback); err != nil {
 		return nil, err
 	}
 	// TODO should we check for possible port change, that might occur after the sketch upload?
@@ -98,7 +98,7 @@ func (p *ninaPlugin) UploadCertificate(portAddress string, fqbn string, certific
 	}
 	fmt.Fprintf(feedback.Out(), "Uploading certificates to %s...\n", portAddress)
 
-	if err := p.uploadCommandsSketch(portAddress, fqbn, feedback); err != nil {
+	if err := p.uploadCommandsSketch(&portAddress, fqbn, feedback); err != nil {
 		return err
 	}
 
@@ -151,7 +151,7 @@ func (p *ninaPlugin) UploadFirmware(portAddress string, fqbn string, firmwarePat
 		return fmt.Errorf("invalid firmware path")
 	}
 
-	if err := p.uploadCommandsSketch(portAddress, fqbn, feedback); err != nil {
+	if err := p.uploadCommandsSketch(&portAddress, fqbn, feedback); err != nil {
 		return err
 	}
 
@@ -174,7 +174,7 @@ func (p *ninaPlugin) UploadFirmware(portAddress string, fqbn string, firmwarePat
 	return nil
 }
 
-func (p *ninaPlugin) uploadCommandsSketch(portAddress, fqbn string, feedback *helper.PluginFeedback) error {
+func (p *ninaPlugin) uploadCommandsSketch(portAddress *string, fqbn string, feedback *helper.PluginFeedback) error {
 	slog.Info("upload command sketch")
 
 	readCommandsSketch := func(fqbn string) ([]byte, error) {
@@ -206,12 +206,27 @@ func (p *ninaPlugin) uploadCommandsSketch(portAddress, fqbn string, feedback *he
 	defer rebootFile.Remove()
 
 	slog.Info("sending serial reset")
-	if err := serialutils.TouchSerialPortAt1200bps(portAddress); err != nil {
+
+	// Will be used after the 1200 touch to check if the OS changed the serial port.
+	allSerialPorts, err := serial.AllPorts()
+	if err != nil {
 		return err
 	}
 
+	if err := serialutils.TouchSerialPortAt1200bps(*portAddress); err != nil {
+		return err
+	}
+
+	newPort, changed, err := allSerialPorts.NewPort()
+	if err != nil {
+		return err
+	}
+	if changed {
+		*portAddress = newPort
+	}
+
 	slog.Info("uploading command sketch with bossac")
-	cmd, err := executils.NewProcess(nil, p.bossacBin.String(), "-i", "-d", "--port="+portAddress, "-U", "true", "-i", "-e", "-w", "-v", rebootFile.String(), "-R")
+	cmd, err := executils.NewProcess(nil, p.bossacBin.String(), "-i", "-d", "--port="+*portAddress, "-U", "true", "-i", "-e", "-w", "-v", rebootFile.String(), "-R")
 	if err != nil {
 		return err
 	}
