@@ -35,21 +35,14 @@ func main() {
 		slog.Error("Couldn't find espflash@2.0.0 binary")
 		os.Exit(1)
 	}
-	bossacPath, err := helper.FindToolPath("bossac", semver.MustParse("1.7.0-arduino3"))
-	if err != nil {
-		slog.Error("Couldn't find bossac@1.7.0-arduino3 binary")
-		os.Exit(1)
-	}
 
 	helper.RunPlugin(&ninaPlugin{
 		espflashBin: espflashPath.Join("espflash"),
-		bossacBin:   bossacPath.Join("bossac"),
 	})
 }
 
 type ninaPlugin struct {
 	espflashBin *paths.Path
-	bossacBin   *paths.Path
 }
 
 var _ helper.Plugin = (*ninaPlugin)(nil)
@@ -59,7 +52,7 @@ func (p *ninaPlugin) GetFirmwareVersion(portAddress string, fqbn string, feedbac
 	if err := p.uploadCommandsSketch(&portAddress, fqbn, feedback); err != nil {
 		return nil, err
 	}
-	// TODO should we check for possible port change, that might occur after the sketch upload?
+
 	port, err := serial.Open(portAddress)
 	if err != nil {
 		return nil, err
@@ -180,9 +173,9 @@ func (p *ninaPlugin) uploadCommandsSketch(portAddress *string, fqbn string, feed
 	readCommandsSketch := func(fqbn string) ([]byte, error) {
 		switch fqbn {
 		case "arduino:mbed_nano:nanorp2040connect":
-			return commandSketchDir.ReadFile("sketches/commands/build/arduino.mbed_nano.nanorp2040connect/commands.ino.bin")
+			return commandSketchDir.ReadFile("sketches/commands/build/arduino.mbed_nano.nanorp2040connect/commands.ino.elf")
 		case "arduino:megaavr:uno2018":
-			return commandSketchDir.ReadFile("sketches/commands/build/arduino.megaavr.uno2018/commands.ino.bin")
+			return commandSketchDir.ReadFile("sketches/commands/build/arduino.megaavr.uno2018/commands.ino.hex")
 		case "arduino:samd:mkrvidor4000":
 			return commandSketchDir.ReadFile("sketches/commands/build/arduino.samd.mkrvidor4000/commands.ino.bin")
 		case "arduino:samd:mkrwifi1010":
@@ -225,8 +218,35 @@ func (p *ninaPlugin) uploadCommandsSketch(portAddress *string, fqbn string, feed
 		*portAddress = newPort
 	}
 
-	slog.Info("uploading command sketch with bossac")
-	cmd, err := executils.NewProcess(nil, p.bossacBin.String(), "-i", "-d", "--port="+*portAddress, "-U", "true", "-i", "-e", "-w", "-v", rebootFile.String(), "-R")
+	getSketchUploader := func(fqbn string) (*executils.Process, error) {
+		switch fqbn {
+		case "arduino:mbed_nano:nanorp2040connect":
+			rp2040loadPath, err := helper.FindToolPath("rp2040tools", semver.MustParse("1.0.6"))
+			if err != nil {
+				return nil, fmt.Errorf("couldn't find rp2040tools@1.0.6 binary")
+			}
+
+			return executils.NewProcess(nil, rp2040loadPath.Join("rp2040load").String(), "-v", "-D", rebootFile.String())
+		case "arduino:megaavr:uno2018":
+			avrdudePath, err := helper.FindToolPath("avrdude", semver.MustParse("6.3.0-arduino17"))
+			if err != nil {
+				return nil, fmt.Errorf("couldn't find avrdude@6.3.0-arduino17 binary")
+			}
+			// "{tool_dir}/bin/avrdude" "-C{tool_dir}/etc/avrdude.conf" -v  -patmega4809 -cxplainedmini_updi -Pusb  -b115200 -e -D "-Uflash:w:{loader.sketch}.hex:i" "-Ufuse2:w:0x01:m" "-Ufuse5:w:0xC9:m" "-Ufuse8:w:0x02:m"
+			return executils.NewProcess(nil, avrdudePath.Join("bin", "avrdude").String(), "-C"+avrdudePath.Join("etc", "avrdude.conf").String(), "-v", "-patmega4809", "-cxplainedmini_updi", "-Pusb", "-b115200", "-e", "-D", fmt.Sprintf("-Uflash:w:%v.hex:i", rebootFile.String()), "-Ufuse2:w:0x01:m", "-Ufuse5:w:0xC9:m", "-Ufuse8:w:0x02:m")
+		case "arduino:samd:mkrwifi1010", "arduino:samd:nano_33_iot", "arduino:samd:mkrvidor4000":
+			bossacPath, err := helper.FindToolPath("bossac", semver.MustParse("1.7.0-arduino3"))
+			if err != nil {
+				return nil, fmt.Errorf("couldn't find bossac@1.7.0-arduino3 binary")
+			}
+
+			return executils.NewProcess(nil, bossacPath.Join("bossac").String(), "-i", "-d", "--port="+*portAddress, "-U", "true", "-i", "-e", "-w", "-v", rebootFile.String(), "-R")
+		}
+		return nil, fmt.Errorf("sketch uploader: the board (fqbn: %v) is not supported", fqbn)
+	}
+
+	slog.Info("uploading command sketch")
+	cmd, err := getSketchUploader(fqbn)
 	if err != nil {
 		return err
 	}

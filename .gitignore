@@ -43,12 +43,19 @@ venv
 __debug_bin
 
 # build sketches files
-/sketches/commands/build/**/*.elf
-/sketches/commands/build/**/*.hex
-/sketches/commands/build/**/*.map
-/sketches/commands/build/**/*.uf2
-/sketches/commands/build/**/*.eep
-/sketches/commands/build/**/*bootloader.bin
+
+sketches/commands/build/**/*.hex
+sketches/commands/build/**/*.elf
+sketches/commands/build/**/*.map
+sketches/commands/build/**/*.uf2
+sketches/commands/build/**/*.eep
+sketches/commands/build/**/*bootloader.bin
+
+sketches/commands/build/arduino.mbed_nano.nanorp2040connect/*.bin
+!sketches/commands/build/arduino.mbed_nano.nanorp2040connect/commands.ino.elf
+
+sketches/commands/build/arduino.megaavr.uno2018/*.bin
+!sketches/commands/build/arduino.megaavr.uno2018/commands.ino.hex
 
 # compiled binary in root folder
 nina-fwuploader-plugin
