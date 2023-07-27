@@ -131,7 +131,7 @@ func (p *ninaPlugin) UploadCertificate(portAddress string, fqbn string, certific
 		return err
 	}
 
-	fmt.Fprintf(feedback.Out(), "\nUpload completed! To complete the update process please disconnect and then reconnect the board.\n")
+	fmt.Fprintf(feedback.Out(), "\nUpload completed!")
 	return nil
 }
 
@@ -162,7 +162,7 @@ func (p *ninaPlugin) UploadFirmware(portAddress string, fqbn string, firmwarePat
 		return err
 	}
 
-	fmt.Fprintf(feedback.Out(), "\nUpload completed! To complete the update process please disconnect and then reconnect the board.\n")
+	fmt.Fprintf(feedback.Out(), "\nUpload completed!")
 
 	return nil
 }
