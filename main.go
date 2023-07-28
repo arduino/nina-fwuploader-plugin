@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"embed"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/arduino/arduino-cli/executils"
@@ -30,20 +29,10 @@ var (
 )
 
 func main() {
-	espflashPath, err := helper.FindToolPath("espflash", semver.MustParse("2.0.0"))
-	if err != nil {
-		slog.Error("Couldn't find espflash@2.0.0 binary")
-		os.Exit(1)
-	}
-
-	helper.RunPlugin(&ninaPlugin{
-		espflashBin: espflashPath.Join("espflash"),
-	})
+	helper.RunPlugin(&ninaPlugin{})
 }
 
-type ninaPlugin struct {
-	espflashBin *paths.Path
-}
+type ninaPlugin struct{}
 
 var _ helper.Plugin = (*ninaPlugin)(nil)
 
@@ -53,14 +42,17 @@ func (p *ninaPlugin) GetFirmwareVersion(portAddress string, fqbn string, feedbac
 		return nil, err
 	}
 
-	port, err := serial.Open(portAddress)
+	port, err := serialOpen(portAddress)
 	if err != nil {
 		return nil, err
 	}
 	defer port.Close()
 
-	if _, err := port.Write([]byte("v")); err != nil {
-		return nil, fmt.Errorf("write to serial port: %v", err)
+	// be sure that the serial port is ready
+	time.Sleep(2 * time.Second)
+
+	if err := getVersion(port); err != nil {
+		return nil, err
 	}
 
 	var version string
@@ -95,10 +87,6 @@ func (p *ninaPlugin) UploadCertificate(portAddress string, fqbn string, certific
 		return err
 	}
 
-	if err := p.reboot(&portAddress, feedback); err != nil {
-		return err
-	}
-
 	certificatesData, err := certificatePath.ReadFile()
 	if err != nil {
 		return err
@@ -121,13 +109,12 @@ func (p *ninaPlugin) UploadCertificate(portAddress string, fqbn string, certific
 	}
 	defer certData.Remove()
 
-	cmd, err := executils.NewProcess([]string{}, p.espflashBin.String(), "write-bin", "-p", portAddress, "-b", "1000000", "0x10000", certData.String())
+	flasher, err := newFlasher(portAddress)
 	if err != nil {
 		return err
 	}
-	cmd.RedirectStderrTo(feedback.Err())
-	cmd.RedirectStdoutTo(feedback.Out())
-	if err := cmd.Run(); err != nil {
+
+	if err := flasher.flashChunk(0x10000, certificatesData); err != nil {
 		return err
 	}
 
@@ -148,17 +135,20 @@ func (p *ninaPlugin) UploadFirmware(portAddress string, fqbn string, firmwarePat
 		return err
 	}
 
-	if err := p.reboot(&portAddress, feedback); err != nil {
-		return err
-	}
-
-	cmd, err := executils.NewProcess(nil, p.espflashBin.String(), "write-bin", "-p", portAddress, "-b", "1000000", "0x0", firmwarePath.String())
+	flasher, err := newFlasher(portAddress)
 	if err != nil {
 		return err
 	}
-	cmd.RedirectStderrTo(feedback.Err())
-	cmd.RedirectStdoutTo(feedback.Out())
-	if err := cmd.Run(); err != nil {
+
+	fwData, err := firmwarePath.ReadFile()
+	if err != nil {
+		return err
+	}
+	if err := flasher.flashChunk(0x0000, fwData); err != nil {
+		return err
+	}
+
+	if err := flasher.md5sum(fwData); err != nil {
 		return err
 	}
 
@@ -176,8 +166,6 @@ func (p *ninaPlugin) uploadCommandsSketch(portAddress *string, fqbn string, feed
 			return commandSketchDir.ReadFile("sketches/commands/build/arduino.mbed_nano.nanorp2040connect/commands.ino.elf")
 		case "arduino:megaavr:uno2018":
 			return commandSketchDir.ReadFile("sketches/commands/build/arduino.megaavr.uno2018/commands.ino.hex")
-		case "arduino:samd:mkrvidor4000":
-			return commandSketchDir.ReadFile("sketches/commands/build/arduino.samd.mkrvidor4000/commands.ino.bin")
 		case "arduino:samd:mkrwifi1010":
 			return commandSketchDir.ReadFile("sketches/commands/build/arduino.samd.mkrwifi1010/commands.ino.bin")
 		case "arduino:samd:nano_33_iot":
@@ -232,9 +220,9 @@ func (p *ninaPlugin) uploadCommandsSketch(portAddress *string, fqbn string, feed
 			if err != nil {
 				return nil, fmt.Errorf("couldn't find avrdude@6.3.0-arduino17 binary")
 			}
-			// "{tool_dir}/bin/avrdude" "-C{tool_dir}/etc/avrdude.conf" -v  -patmega4809 -cxplainedmini_updi -Pusb  -b115200 -e -D "-Uflash:w:{loader.sketch}.hex:i" "-Ufuse2:w:0x01:m" "-Ufuse5:w:0xC9:m" "-Ufuse8:w:0x02:m"
+
 			return executils.NewProcess(nil, avrdudePath.Join("bin", "avrdude").String(), "-C"+avrdudePath.Join("etc", "avrdude.conf").String(), "-v", "-patmega4809", "-cxplainedmini_updi", "-Pusb", "-b115200", "-e", "-D", fmt.Sprintf("-Uflash:w:%v:i", rebootFile.String()), "-Ufuse2:w:0x01:m", "-Ufuse5:w:0xC9:m", "-Ufuse8:w:0x02:m")
-		case "arduino:samd:mkrwifi1010", "arduino:samd:nano_33_iot", "arduino:samd:mkrvidor4000":
+		case "arduino:samd:mkrwifi1010", "arduino:samd:nano_33_iot":
 			bossacPath, err := helper.FindToolPath("bossac", semver.MustParse("1.7.0-arduino3"))
 			if err != nil {
 				return nil, fmt.Errorf("couldn't find bossac@1.7.0-arduino3 binary")
@@ -256,38 +244,7 @@ func (p *ninaPlugin) uploadCommandsSketch(portAddress *string, fqbn string, feed
 		return err
 	}
 
+	slog.Info("upload command sketch completed")
 	time.Sleep(3 * time.Second)
-	return nil
-}
-
-func (p *ninaPlugin) reboot(portAddress *string, feedback *helper.PluginFeedback) error {
-	// Will be used later to check if the OS changed the serial port.
-	allSerialPorts, err := serial.AllPorts()
-	if err != nil {
-		return err
-	}
-
-	fmt.Fprintf(feedback.Out(), "\nWaiting to flash the binary...\n")
-
-	port, err := serial.Open(*portAddress)
-	if err != nil {
-		return err
-	}
-
-	if err := serial.SendCommandAndClose(port, serial.Command("r")); err != nil {
-		return err
-	}
-
-	slog.Info("check if serial port has changed")
-	// When a board is successfully rebooted in esp32 mode, it might change the serial port.
-	// Every 250ms we're watching for new ports, if a new one is found we return that otherwise
-	// we'll wait the 10 seconds timeout expiration.
-	newPort, changed, err := allSerialPorts.NewPort()
-	if err != nil {
-		return err
-	}
-	if changed {
-		*portAddress = newPort
-	}
 	return nil
 }
