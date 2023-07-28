@@ -42,3 +42,10 @@ venv
 # Delve debugger binary file
 __debug_bin
 
+# build sketches files
+/sketches/commands/build/**/*.elf
+/sketches/commands/build/**/*.hex
+/sketches/commands/build/**/*.map
+/sketches/commands/build/**/*.uf2
+/sketches/commands/build/**/*.eep
+/sketches/commands/build/**/*bootloader.bin
