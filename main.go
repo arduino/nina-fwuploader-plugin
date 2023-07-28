@@ -109,7 +109,7 @@ func (p *ninaPlugin) UploadCertificate(portAddress string, fqbn string, certific
 	}
 	defer certData.Remove()
 
-	flasher, err := newFlasher(portAddress)
+	flasher, err := newFlasher(portAddress, defaultProgressCallBack(feedback))
 	if err != nil {
 		return err
 	}
@@ -135,7 +135,7 @@ func (p *ninaPlugin) UploadFirmware(portAddress string, fqbn string, firmwarePat
 		return err
 	}
 
-	flasher, err := newFlasher(portAddress)
+	flasher, err := newFlasher(portAddress, defaultProgressCallBack(feedback))
 	if err != nil {
 		return err
 	}

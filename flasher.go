@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	helper "github.com/arduino/fwuploader-plugin-helper"
 	"go.bug.st/serial"
 )
 
@@ -19,11 +20,16 @@ type commandData struct {
 }
 
 type flasher struct {
-	port        serial.Port
-	payloadSize int
+	port             serial.Port
+	payloadSize      int
+	progressCallback func(progress int)
 }
 
-func newFlasher(portAddress string) (*flasher, error) {
+func defaultProgressCallBack(feedback *helper.PluginFeedback) func(progress int) {
+	return func(progress int) { fmt.Fprintf(feedback.Out(), "Flashing progress: %d%%\r", progress) }
+}
+
+func newFlasher(portAddress string, progressCallback func(progress int)) (*flasher, error) {
 	port, err := serialOpen(portAddress)
 	if err != nil {
 		return nil, err
@@ -34,7 +40,7 @@ func newFlasher(portAddress string) (*flasher, error) {
 	reboot(port)
 	time.Sleep(2 * time.Second)
 
-	f := &flasher{port: port}
+	f := &flasher{port: port, progressCallback: progressCallback}
 
 	payloadSize, err := f.getMaximumPayloadSize()
 	if err != nil {
@@ -58,8 +64,10 @@ func (f *flasher) flashChunk(offset int, buffer []byte) error {
 	}
 
 	for i := 0; i < bufferLength; i += chunkSize {
-		progress := (i * 100) / bufferLength
-		fmt.Printf("Flashing progress: %d%%\r", progress)
+		if f.progressCallback != nil {
+			progress := (i * 100) / bufferLength
+			f.progressCallback(progress)
+		}
 		start := i
 		end := i + chunkSize
 		if end > bufferLength {
