@@ -233,7 +233,7 @@ func (p *ninaPlugin) uploadCommandsSketch(portAddress *string, fqbn string, feed
 				return nil, fmt.Errorf("couldn't find avrdude@6.3.0-arduino17 binary")
 			}
 			// "{tool_dir}/bin/avrdude" "-C{tool_dir}/etc/avrdude.conf" -v  -patmega4809 -cxplainedmini_updi -Pusb  -b115200 -e -D "-Uflash:w:{loader.sketch}.hex:i" "-Ufuse2:w:0x01:m" "-Ufuse5:w:0xC9:m" "-Ufuse8:w:0x02:m"
-			return executils.NewProcess(nil, avrdudePath.Join("bin", "avrdude").String(), "-C"+avrdudePath.Join("etc", "avrdude.conf").String(), "-v", "-patmega4809", "-cxplainedmini_updi", "-Pusb", "-b115200", "-e", "-D", fmt.Sprintf("-Uflash:w:%v.hex:i", rebootFile.String()), "-Ufuse2:w:0x01:m", "-Ufuse5:w:0xC9:m", "-Ufuse8:w:0x02:m")
+			return executils.NewProcess(nil, avrdudePath.Join("bin", "avrdude").String(), "-C"+avrdudePath.Join("etc", "avrdude.conf").String(), "-v", "-patmega4809", "-cxplainedmini_updi", "-Pusb", "-b115200", "-e", "-D", fmt.Sprintf("-Uflash:w:%v:i", rebootFile.String()), "-Ufuse2:w:0x01:m", "-Ufuse5:w:0xC9:m", "-Ufuse8:w:0x02:m")
 		case "arduino:samd:mkrwifi1010", "arduino:samd:nano_33_iot", "arduino:samd:mkrvidor4000":
 			bossacPath, err := helper.FindToolPath("bossac", semver.MustParse("1.7.0-arduino3"))
 			if err != nil {
