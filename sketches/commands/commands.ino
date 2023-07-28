@@ -16,7 +16,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // To generate the binaries run:
-// arduino-cli compile -e --profile <profile_name>
+// ./compile.sh
 
 #include <SPI.h>
 #include <WiFiNINA.h>
@@ -43,10 +43,10 @@ static const int MAX_PAYLOAD_SIZE = 1024;
 void setup() {
   Serial.begin(1000000);
 
-  while(true) {
-    if (Serial.available()){
+  while (true) {
+    if (Serial.available()) {
       char choice = Serial.read();
-      switch (choice){
+      switch (choice) {
         case 'r':
           if (!ESP32BootROM.begin(921600)) {
             Serial.println("Unable to communicate with ESP32 boot ROM!");
@@ -158,14 +158,14 @@ void flash() {
 }
 
 void version() {
-    if (WiFi.status() == WL_NO_MODULE) {
-        Serial.println("99.99.99");
-        return;
-    }
+  if (WiFi.status() == WL_NO_MODULE) {
+    Serial.println("99.99.99");
+    return;
+  }
 
-    // Print firmware version on the module
-    String fv = WiFi.firmwareVersion();
-    Serial.println(fv);
+  // Print firmware version on the module
+  String fv = WiFi.firmwareVersion();
+  Serial.println(fv);
 }
 
 void loop() { }
