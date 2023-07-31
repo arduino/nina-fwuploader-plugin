@@ -104,15 +104,14 @@ func (p *ninaPlugin) UploadCertificate(portAddress string, fqbn string, certific
 		return err
 	}
 
-	certificatesData, err := certificatePath.ReadFile()
+	flasher, err := newFlasher(portAddress, defaultProgressCallBack(feedback))
 	if err != nil {
 		return err
 	}
 
-	// The certificate must be multiple of 4, otherwise `espflash` won't work!
-	// (https://github.com/esp-rs/espflash/issues/440)
-	for len(certificatesData)&3 != 0 {
-		certificatesData = append(certificatesData, 0)
+	certificatesData, err := certificatePath.ReadFile()
+	if err != nil {
+		return err
 	}
 
 	certificatesDataLimit := 0x20000
@@ -120,15 +119,8 @@ func (p *ninaPlugin) UploadCertificate(portAddress string, fqbn string, certific
 		return fmt.Errorf("certificates data %d exceeds limit of %d bytes", len(certificatesData), certificatesDataLimit)
 	}
 
-	certData, err := paths.WriteToTempFile(certificatesData, paths.TempDir(), "nina-fwuploader-plugin-cert")
-	if err != nil {
-		return err
-	}
-	defer certData.Remove()
-
-	flasher, err := newFlasher(portAddress, defaultProgressCallBack(feedback))
-	if err != nil {
-		return err
+	for len(certificatesData)%int(flasher.payloadSize) != 0 {
+		certificatesData = append(certificatesData, 0)
 	}
 
 	if err := flasher.flashChunk(0x10000, certificatesData); err != nil {
