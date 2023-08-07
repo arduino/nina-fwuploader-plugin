@@ -16,42 +16,43 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // To generate the binaries run:
-// arduino-cli compile -e --profile <profile_name>
+// ./compile.sh
 
 #include <SPI.h>
 #include <WiFiNINA.h>
-#ifdef ARDUINO_SAMD_MKRVIDOR4000
-#include <VidorPeripherals.h>
+#include "ESP32BootROM.h"
 
-unsigned long baud = 119400;
-#else
-unsigned long baud = 115200;
-#endif
+typedef struct __attribute__((__packed__)) {
+  uint8_t command;
+  uint32_t address;
+  uint32_t arg1;
+  uint16_t payloadLength;
 
-int rts = -1;
-int dtr = -1;
+  // payloadLength bytes of data follows...
+} UartPacket;
 
-void setup(){
-  Serial.begin(baud);
-  SerialNina.begin(baud);
+static const int MAX_PAYLOAD_SIZE = 1024;
 
-#ifdef ARDUINO_SAMD_MKRVIDOR4000
-  FPGA.begin();
-#endif
+#define CMD_READ_FLASH        0x01
+#define CMD_WRITE_FLASH       0x02
+#define CMD_ERASE_FLASH       0x03
+#define CMD_MD5_FLASH         0x04
+#define CMD_MAX_PAYLOAD_SIZE  0x50
+#define CMD_HELLO             0x99
 
-#ifdef ARDUINO_SAMD_MKRVIDOR4000
-  FPGA.pinMode(FPGA_NINA_GPIO0, OUTPUT);
-  FPGA.pinMode(FPGA_SPIWIFI_RESET, OUTPUT);
-#else
-  pinMode(NINA_GPIO0, OUTPUT);
-  pinMode(NINA_RESETN, OUTPUT);
-#endif
-  while(true) {
-    if (Serial.available()){
+void setup() {
+  Serial.begin(1000000);
+
+  while (true) {
+    if (Serial.available()) {
       char choice = Serial.read();
-      switch (choice){
+      switch (choice) {
         case 'r':
-          restartPassthrough();
+          if (!ESP32BootROM.begin(921600)) {
+            Serial.println("Unable to communicate with ESP32 boot ROM!");
+            return;
+          }
+          while (1) flash();
           return;
         case 'v':
           version();
@@ -63,79 +64,108 @@ void setup(){
   }
 }
 
-void restartPassthrough(){
-#ifdef ARDUINO_AVR_UNO_WIFI_REV2
-  // manually put the NINA in upload mode
-  digitalWrite(NINA_GPIO0, LOW);
-  digitalWrite(NINA_RESETN, LOW);
-  delay(100);
-  digitalWrite(NINA_RESETN, HIGH);
-  delay(100);
-  digitalWrite(NINA_RESETN, LOW);
-#endif
-  while (true) {
-#ifndef ARDUINO_AVR_UNO_WIFI_REV2
-    if (rts != Serial.rts()) {
-#ifdef ARDUINO_SAMD_MKRVIDOR4000
-      FPGA.digitalWrite(FPGA_SPIWIFI_RESET, (Serial.rts() == 1) ? LOW : HIGH);
-#elif defined(ARDUINO_SAMD_NANO_33_IOT)
-      digitalWrite(NINA_RESETN, Serial.rts() ? LOW : HIGH);
-#else
-      digitalWrite(NINA_RESETN, Serial.rts());
-#endif
-      rts = Serial.rts();
-    }
+void receivePacket(UartPacket *pkt, uint8_t *payload) {
+  // Read command
+  uint8_t *p = reinterpret_cast<uint8_t *>(pkt);
+  uint16_t l = sizeof(UartPacket);
+  while (l > 0) {
+    int c = Serial.read();
+    if (c == -1)
+      continue;
+    *p++ = c;
+    l--;
+  }
 
-    if (dtr != Serial.dtr()) {
-#ifdef ARDUINO_SAMD_MKRVIDOR4000
-      FPGA.digitalWrite(FPGA_NINA_GPIO0, (Serial.dtr() == 1) ? HIGH : LOW);
-#else
-      digitalWrite(NINA_GPIO0, (Serial.dtr() == 0) ? HIGH : LOW);
-#endif
-      dtr = Serial.dtr();
-    }
-#endif
+  // Convert parameters from network byte order to CPU byte order
+  pkt->address = fromNetwork32(pkt->address);
+  pkt->arg1 = fromNetwork32(pkt->arg1);
+  pkt->payloadLength = fromNetwork16(pkt->payloadLength);
 
-    if (Serial.available()){
-      SerialNina.write(Serial.read());
-    }
-
-    if (SerialNina.available()) {
-      Serial.write(SerialNina.read());
-    }
-
-#ifndef ARDUINO_AVR_UNO_WIFI_REV2
-    // check if the USB virtual serial wants a new baud rate
-    if (Serial.baud() != baud) {
-      rts = -1;
-      dtr = -1;
-
-      baud = Serial.baud();
-#ifndef ARDUINO_SAMD_MKRVIDOR4000
-      SerialNina.begin(baud);
-#endif
-    }
-#endif
+  // Read payload
+  l = pkt->payloadLength;
+  while (l > 0) {
+    int c = Serial.read();
+    if (c == -1)
+      continue;
+    *payload++ = c;
+    l--;
   }
 }
 
-void version(){
-//   Print a welcome message
-  Serial.println("WiFiNINA firmware check.");
-  Serial.println();
+// Allocated statically so the compiler can tell us
+// about the amount of used RAM
+static UartPacket pkt;
+static uint8_t payload[MAX_PAYLOAD_SIZE];
 
-  // check for the WiFi module:
+void flash() {
+  receivePacket(&pkt, payload);
+
+  if (pkt.command == CMD_HELLO) {
+    if (pkt.address == 0x11223344 && pkt.arg1 == 0x55667788)
+      Serial.print("v10000");
+  }
+
+  if (pkt.command == CMD_MAX_PAYLOAD_SIZE) {
+    uint16_t res = toNetwork16(MAX_PAYLOAD_SIZE);
+    Serial.write(reinterpret_cast<uint8_t *>(&res), sizeof(res));
+  }
+
+  if (pkt.command == CMD_READ_FLASH) {
+    // not supported!
+    Serial.println("ER");
+  }
+
+  if (pkt.command == CMD_WRITE_FLASH) {
+    uint32_t len = pkt.payloadLength;
+    if (!ESP32BootROM.dataFlash(payload, len)) {
+      Serial.print("ER");
+    } else {
+      Serial.print("OK");
+    }
+  }
+
+  if (pkt.command == CMD_ERASE_FLASH) {
+    uint32_t address = pkt.address;
+    uint32_t len = pkt.arg1;
+    if (!ESP32BootROM.beginFlash(address, len, MAX_PAYLOAD_SIZE)) {
+      Serial.print("ER");
+    } else {
+      Serial.print("OK");
+    }
+  }
+
+  if (pkt.command == CMD_MD5_FLASH) {
+    uint32_t address = pkt.address;
+    uint32_t len = pkt.arg1;
+
+    if (!ESP32BootROM.endFlash(1)) {
+      Serial.print("ER");
+    } else {
+      ESP32BootROM.end();
+
+      uint8_t md5[16];
+
+      if (!ESP32BootROM.begin(921600)) {
+        Serial.print("ER");
+      } else if (!ESP32BootROM.md5Flash(address, len, md5)) {
+        Serial.print("ER");
+      } else {
+        Serial.print("OK");
+        Serial.write(md5, sizeof(md5));
+      }
+    }
+  }
+}
+
+void version() {
   if (WiFi.status() == WL_NO_MODULE) {
-    Serial.println("Communication with WiFi module failed!");
-    // don't continue
-    while (true);
+    Serial.println("99.99.99");
+    return;
   }
 
   // Print firmware version on the module
   String fv = WiFi.firmwareVersion();
-  Serial.print("Firmware version installed: ");
   Serial.println(fv);
 }
 
-void loop() {
-}
+void loop() { }

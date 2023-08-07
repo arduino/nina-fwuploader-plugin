@@ -93,7 +93,7 @@ tasks:
     desc: Build the Go code
     dir: "{{.DEFAULT_GO_MODULE_PATH}}"
     cmds:
-      - go build -v {{.LDFLAGS}}
+      - CGO_ENABLED=0 go build -v {{.LDFLAGS}}
 
   # Source: https://github.com/arduino/tooling-project-assets/blob/main/workflow-templates/assets/check-go-task/Taskfile.yml
   go:fix:
@@ -146,6 +146,16 @@ tasks:
     dir: "{{default .DEFAULT_GO_MODULE_PATH .GO_MODULE_PATH}}"
     cmds:
       - go vet {{default .DEFAULT_GO_PACKAGES .GO_PACKAGES}}
+
+  sketch:compile:
+    desc: Compile all the sketches
+    dir: "./sketches/commands/"
+    cmds:
+      - |
+        for profile in mkrwifi1010 nano_33_iot uno2018 nanorp2040connect
+        do
+            arduino-cli compile -e --profile $profile
+        done
 
   # Source: https://github.com/arduino/tooling-project-assets/blob/main/workflow-templates/assets/check-markdown-task/Taskfile.yml
   markdown:check-links:

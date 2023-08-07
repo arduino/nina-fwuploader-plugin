@@ -13,14 +13,6 @@ profiles:
     libraries:
       - WiFiNINA (1.8.14)
 
-  mkrvidor4000:
-    fqbn: arduino:samd:mkrvidor4000
-    platforms:
-      - platform: arduino:samd (1.8.13)
-    libraries:
-      - WiFiNINA (1.8.14)
-      - VidorPeripherals (1.1.0)
-
   uno2018:
     fqbn: arduino:megaavr:uno2018
     platforms:
