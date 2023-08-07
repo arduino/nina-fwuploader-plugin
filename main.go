@@ -18,9 +18,10 @@
 package main
 
 import (
-	"bufio"
 	"embed"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/arduino/arduino-cli/executils"
@@ -72,13 +73,23 @@ func (p *ninaPlugin) GetFirmwareVersion(portAddress string, fqbn string, feedbac
 		return nil, err
 	}
 
-	var version string
-	scanner := bufio.NewScanner(port)
-	for scanner.Scan() {
-		version = scanner.Text()
-		break
+	// wait 1 second to allow the sketch to fill the buffer with the version string
+	time.Sleep(1 * time.Second)
+
+	if err := port.SetReadTimeout(time.Second); err != nil {
+		return nil, err
 	}
 
+	buff := make([]byte, 30)
+	n, err := port.Read(buff)
+	if err != nil {
+		return nil, err
+	}
+	if n == 0 {
+		return nil, errors.New("couldn't read serial buffer")
+	}
+
+	version := strings.TrimSpace(string(buff[:n]))
 	return semver.ParseRelaxed(version), nil
 }
 
