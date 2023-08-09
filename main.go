@@ -56,9 +56,11 @@ var _ helper.Plugin = (*ninaPlugin)(nil)
 
 // GetFirmwareVersion implements helper.Plugin.
 func (p *ninaPlugin) GetFirmwareVersion(portAddress string, fqbn string, feedback *helper.PluginFeedback) (*semver.RelaxedVersion, error) {
-	if err := p.uploadCommandsSketch(&portAddress, fqbn, feedback); err != nil {
+	newPort, err := p.uploadCommandsSketch(portAddress, fqbn, feedback)
+	if err != nil {
 		return nil, err
 	}
+	portAddress = newPort
 
 	port, err := serialOpen(portAddress)
 	if err != nil {
@@ -111,9 +113,11 @@ func (p *ninaPlugin) UploadCertificate(portAddress string, fqbn string, certific
 	}
 	fmt.Fprintf(feedback.Out(), "Uploading certificates to %s...\n", portAddress)
 
-	if err := p.uploadCommandsSketch(&portAddress, fqbn, feedback); err != nil {
+	newPort, err := p.uploadCommandsSketch(portAddress, fqbn, feedback)
+	if err != nil {
 		return err
 	}
+	portAddress = newPort
 
 	flasher, err := newFlasher(portAddress, defaultProgressCallBack(feedback))
 	if err != nil {
@@ -151,9 +155,11 @@ func (p *ninaPlugin) UploadFirmware(portAddress string, fqbn string, firmwarePat
 		return fmt.Errorf("invalid firmware path")
 	}
 
-	if err := p.uploadCommandsSketch(&portAddress, fqbn, feedback); err != nil {
+	newPort, err := p.uploadCommandsSketch(portAddress, fqbn, feedback)
+	if err != nil {
 		return err
 	}
+	portAddress = newPort
 
 	flasher, err := newFlasher(portAddress, defaultProgressCallBack(feedback))
 	if err != nil {
@@ -177,7 +183,7 @@ func (p *ninaPlugin) UploadFirmware(portAddress string, fqbn string, firmwarePat
 	return nil
 }
 
-func (p *ninaPlugin) uploadCommandsSketch(portAddress *string, fqbn string, feedback *helper.PluginFeedback) error {
+func (p *ninaPlugin) uploadCommandsSketch(portAddress string, fqbn string, feedback *helper.PluginFeedback) (string, error) {
 	slog.Info("upload command sketch")
 
 	readCommandsSketch := func(fqbn string) ([]byte, error) {
@@ -197,12 +203,12 @@ func (p *ninaPlugin) uploadCommandsSketch(portAddress *string, fqbn string, feed
 
 	sketchData, err := readCommandsSketch(fqbn)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	rebootFile, err := paths.WriteToTempFile(sketchData, paths.TempDir(), "nina-fwuploader-plugin")
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer rebootFile.Remove()
 
@@ -211,19 +217,27 @@ func (p *ninaPlugin) uploadCommandsSketch(portAddress *string, fqbn string, feed
 	// Will be used after the 1200 touch to check if the OS changed the serial port.
 	allSerialPorts, err := serial.AllPorts()
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	if err := serialutils.TouchSerialPortAt1200bps(*portAddress); err != nil {
-		return err
+	if err := serialutils.TouchSerialPortAt1200bps(portAddress); err != nil {
+		return "", err
 	}
 
-	newPort, changed, err := allSerialPorts.NewPort()
+	// The bootloaderPort will be used only by the loader, after the sketch is flashed it will restore the board at the user provided port.
+	bootloaderPort, changed, err := allSerialPorts.NewPort()
 	if err != nil {
-		return err
+		return "", err
 	}
-	if changed {
-		*portAddress = newPort
+	if !changed {
+		bootloaderPort = portAddress
+	}
+	slog.Info("bootloader port", slog.String("address", bootloaderPort))
+
+	// Will be used after the loader the detect possible new serial port
+	allSerialPorts, err = serial.AllPorts()
+	if err != nil {
+		return "", err
 	}
 
 	getSketchUploader := func(fqbn string) (*executils.Process, error) {
@@ -248,7 +262,7 @@ func (p *ninaPlugin) uploadCommandsSketch(portAddress *string, fqbn string, feed
 				return nil, fmt.Errorf("couldn't find bossac@1.7.0-arduino3 binary")
 			}
 
-			return executils.NewProcess(nil, bossacPath.Join("bossac").String(), "-i", "-d", "--port="+*portAddress, "-U", "true", "-i", "-e", "-w", "-v", rebootFile.String(), "-R")
+			return executils.NewProcess(nil, bossacPath.Join("bossac").String(), "-i", "-d", "--port="+bootloaderPort, "-U", "true", "-i", "-e", "-w", "-v", rebootFile.String(), "-R")
 		}
 		return nil, fmt.Errorf("sketch uploader: the board (fqbn: %v) is not supported", fqbn)
 	}
@@ -256,15 +270,22 @@ func (p *ninaPlugin) uploadCommandsSketch(portAddress *string, fqbn string, feed
 	slog.Info("uploading command sketch")
 	cmd, err := getSketchUploader(fqbn)
 	if err != nil {
-		return err
+		return "", err
 	}
 	cmd.RedirectStderrTo(feedback.Err())
 	cmd.RedirectStdoutTo(feedback.Out())
 	if err := cmd.Run(); err != nil {
-		return err
+		return "", err
 	}
 
+	newPort, changed, err := allSerialPorts.NewPort()
+	if err != nil {
+		return "", err
+	}
+	if changed {
+		portAddress = newPort
+		slog.Info("new serial port", slog.String("address", portAddress))
+	}
 	slog.Info("upload command sketch completed")
-	time.Sleep(3 * time.Second)
-	return nil
+	return portAddress, nil
 }
